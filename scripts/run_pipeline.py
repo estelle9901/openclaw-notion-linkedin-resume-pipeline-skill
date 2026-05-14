@@ -85,6 +85,29 @@ def query_all_rows(db_id, h):
     return out
 
 
+def fetch_existing_urls(db_id, h):
+    """Return set of URLs already in the Notion database."""
+    existing = set()
+    cur = None
+    while True:
+        payload = {"page_size": 100}
+        if cur:
+            payload["start_cursor"] = cur
+        r = requests.post(
+            f"https://api.notion.com/v1/databases/{db_id}/query",
+            headers=h, data=json.dumps(payload), timeout=30
+        ).json()
+        for page in r.get("results", []):
+            url = page.get("properties", {}).get("URL", {}).get("url")
+            if url:
+                # Normalize: strip tracking params after ?
+                existing.add(url.split("?")[0])
+        if not r.get("has_more"):
+            break
+        cur = r.get("next_cursor")
+    return existing
+
+
 def title(prop):
     return "".join(x.get("plain_text", "") for x in prop.get("title", [])).strip()
 
@@ -274,7 +297,7 @@ def run(args):
     summary = {
         "searched": 0, "accepted": 0, "rejected": 0,
         "rejected_by_reason": {
-            "wrong_location": 0, "non_target_role": 0,
+            "duplicate": 0, "wrong_location": 0, "non_target_role": 0,
             "short_gig": 0, "low_pay_parttime": 0,
             "citizenship_only": 0, "phd_only": 0, "other": 0,
         },
@@ -283,6 +306,7 @@ def run(args):
         "failures": [],
     }
 
+    existing_urls = fetch_existing_urls(db_id, h)
     seen = set()
     accepted_jobs = []
     for q in ROLE_QUERIES:
@@ -309,6 +333,11 @@ def run(args):
                 ).text
             except Exception as e:
                 summary["failures"].append({"job_id": j["id"], "error": str(e)})
+                continue
+            # Skip if already in Notion
+            if j["url"].split("?")[0] in existing_urls:
+                summary["rejected"] += 1
+                summary["rejected_by_reason"]["duplicate"] = summary["rejected_by_reason"].get("duplicate", 0) + 1
                 continue
             reason = reject_reason(jd_html, j["position"], j.get("location", ""))
             if reason:
