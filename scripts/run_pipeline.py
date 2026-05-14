@@ -4,7 +4,7 @@ from pathlib import Path
 from urllib.parse import quote
 from html import unescape
 
-ROLE_QUERIES = [
+LINKEDIN_QUERIES = [
     "art director photo video Los Angeles",
     "art director social media Los Angeles",
     "art director advertising Los Angeles",
@@ -15,6 +15,7 @@ ROLE_QUERIES = [
     "creative assistant Los Angeles",
     "junior art director Los Angeles",
 ]
+
 
 # LA metro area acceptable location strings (lowercase substrings)
 LA_LOCATIONS = [
@@ -231,6 +232,8 @@ def classify_priority(jd, position):
     return "high"
 
 
+
+
 def extract_hourly_rate(txt):
     """Return the lowest hourly rate found in the text, or None if not found."""
     # Match patterns like $15/hr, $15.50/hour, $15 per hour, $15-$20/hr
@@ -309,45 +312,56 @@ def run(args):
     existing_urls = fetch_existing_urls(db_id, h)
     seen = set()
     accepted_jobs = []
-    for q in ROLE_QUERIES:
-        url = (
-            f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
-            f"?keywords={quote(q)}&location=Los+Angeles+Metropolitan+Area"
-            f"&f_TPR=r86400&sortBy=DD&start=0"
-        )
-        try:
-            html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=25).text
-        except Exception as e:
-            summary["failures"].append({"query": q, "error": str(e)})
-            continue
-        cards = parse_job_cards(html)
-        summary["searched"] += len(cards)
-        for j in cards:
-            if j["id"] in seen:
-                continue
-            seen.add(j["id"])
+
+    # --- LinkedIn (paginated, 48h window) ---
+    for q in LINKEDIN_QUERIES:
+        if len(accepted_jobs) >= args.max_accept:
+            break
+        for start in [0, 10, 20]:
+            if len(accepted_jobs) >= args.max_accept:
+                break
+            url = (
+                f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+                f"?keywords={quote(q)}&location=Los+Angeles+Metropolitan+Area"
+                f"&f_TPR=r172800&sortBy=DD&start={start}"
+            )
             try:
-                jd_html = requests.get(
-                    f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{j['id']}",
-                    headers={"User-Agent": "Mozilla/5.0"}, timeout=25,
-                ).text
+                html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=25).text
             except Exception as e:
-                summary["failures"].append({"job_id": j["id"], "error": str(e)})
-                continue
-            # Skip if already in Notion
-            if j["url"].split("?")[0] in existing_urls:
-                summary["rejected"] += 1
-                summary["rejected_by_reason"]["duplicate"] = summary["rejected_by_reason"].get("duplicate", 0) + 1
-                continue
-            reason = reject_reason(jd_html, j["position"], j.get("location", ""))
-            if reason:
-                summary["rejected"] += 1
-                summary["rejected_by_reason"][reason] = summary["rejected_by_reason"].get(reason, 0) + 1
-                continue
-            j["jd_text"] = extract_jd_text(jd_html)
-            j["priority"] = classify_priority(jd_html, j["position"])
-            accepted_jobs.append(j)
-            summary["accepted"] += 1
+                summary["failures"].append({"source": "linkedin", "query": q, "error": str(e)})
+                break
+            cards = parse_job_cards(html)
+            if not cards:
+                break  # no more results for this query
+            summary["searched"] += len(cards)
+            for j in cards:
+                if j["id"] in seen:
+                    continue
+                seen.add(j["id"])
+                try:
+                    jd_html = requests.get(
+                        f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{j['id']}",
+                        headers={"User-Agent": "Mozilla/5.0"}, timeout=25,
+                    ).text
+                except Exception as e:
+                    summary["failures"].append({"job_id": j["id"], "error": str(e)})
+                    continue
+                if j["url"].split("?")[0] in existing_urls:
+                    summary["rejected"] += 1
+                    summary["rejected_by_reason"]["duplicate"] += 1
+                    continue
+                reason = reject_reason(jd_html, j["position"], j.get("location", ""))
+                if reason:
+                    summary["rejected"] += 1
+                    summary["rejected_by_reason"][reason] = summary["rejected_by_reason"].get(reason, 0) + 1
+                    continue
+                j["jd_text"] = extract_jd_text(jd_html)
+                j["priority"] = classify_priority(jd_html, j["position"])
+                j["source"] = "linkedin"
+                accepted_jobs.append(j)
+                summary["accepted"] += 1
+                if len(accepted_jobs) >= args.max_accept:
+                    break
             if len(accepted_jobs) >= args.max_accept:
                 break
         if len(accepted_jobs) >= args.max_accept:
@@ -355,7 +369,7 @@ def run(args):
 
     for j in accepted_jobs:
         priority = j.get("priority", "high")
-        note_parts = [f"priority: {priority}"]
+        note_parts = [f"priority: {priority}", f"src: {j.get('source', 'linkedin')}"]
         if j.get("location"):
             note_parts.append(f"loc: {j['location']}")
         if priority == "low":
