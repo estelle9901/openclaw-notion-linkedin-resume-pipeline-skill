@@ -1,0 +1,80 @@
+{
+  "profileName": "estelle",
+  "notion": {
+    "databaseId": "3609b975fc2880ec868fce2a125517bb",
+    "envFile": "./.secrets/notion.env",
+    "fields": {
+      "name": "Name",
+      "status": "Status",
+      "url": "URL",
+      "position": "Position",
+      "note": "note"
+    },
+    "statusFlow": {
+      "pending": "Not started",
+      "done": "resume"
+    },
+    "writeJobDescriptionToChildPage": true
+  },
+  "search": {
+    "sources": ["linkedin"],
+    "timeWindowHours": 24,
+    "locations": ["Los Angeles, CA"],
+    "targetRoles": [
+      "Art Director",
+      "Creative Director",
+      "Creative Assistant",
+      "Content Creator"
+    ],
+    "industry": ["advertising agency", "brand in-house", "fashion", "luxury", "lifestyle"],
+    "employmentType": "full-time preferred; part-time accepted only if >= $20/hr",
+    "exclude": {
+      "citizenshipOnly": true,
+      "shortGigs": true,
+      "partTimeBelow20PerHour": true,
+      "phdOnly": true,
+      "nonLALocations": true
+    }
+  },
+  "resume": {
+    "knowledgeBasePaths": [
+      "./profiles/job-pipeline/estelle-resume.md"
+    ],
+    "candidateName": "Estelle Huang",
+    "workAuthorization": "Authorized to work in the U.S. (No sponsorship required)",
+    "maxPages": 2,
+    "atsMode": true,
+    "sectionsOrder": [
+      "Professional Profile",
+      "Professional Experience",
+      "Technical Skills",
+      "Education",
+      "Selected Exhibitions & Grants",
+      "Awards & Recognition"
+    ],
+    "formatting": {
+      "font": "Calibri",
+      "heading": "bold 15pt + divider line",
+      "body": "11pt",
+      "points": "dash",
+      "titleDateLayout": "same line, title left date right; org/location next line"
+    },
+    "fileNamePattern": "{Company} - {Position} Resume.docx"
+  },
+  "reporting": {
+    "summaryOnly": true,
+    "metrics": [
+      "searchedCount",
+      "filteredInCount",
+      "insertedCount",
+      "resumesGeneratedCount",
+      "statusUpdatedCount",
+      "failures"
+    ]
+  },
+  "schedule": {
+    "cron": "0 8 * * *",
+    "tz": "America/Los_Angeles",
+    "maxAcceptPerRun": 10
+  }
+}
